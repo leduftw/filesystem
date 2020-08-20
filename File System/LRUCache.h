@@ -33,6 +33,11 @@ public:
 	LRUCache(Disk *);
 
 	/*
+		
+	*/
+	~LRUCache();
+
+	/*
 		O(1).
 	*/
 	Cluster* get(ClusterNo key);

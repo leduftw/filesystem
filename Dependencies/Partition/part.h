@@ -30,10 +30,15 @@ public:
 	*/
 	virtual int writeCluster(ClusterNo, const char *buffer);
 
+	/*
+		Call at the end!!!
+	*/
 	virtual ~Partition();
 
 private:
+
 	PartitionImpl *myImpl;
+
 };
 
 #endif

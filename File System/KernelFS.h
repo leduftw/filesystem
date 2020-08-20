@@ -2,7 +2,9 @@
 #define KERNELFS_H
 
 #include <Windows.h>
+
 #include "Disk.h"
+#include "LRUCache.h"
 
 #define wait(semaphore) WaitForSingleObject(semaphore, INFINITE)
 #define signal(semaphore) ReleaseSemaphore(semaphore, 1, NULL)
@@ -58,6 +60,7 @@ private:
 	HANDLE mutex = CreateSemaphore(NULL, 1, 1, NULL);
 
 	Disk *disk = nullptr;
+	LRUCache *cache = nullptr;
 
 	// Number of currently opened files
 	int openFilesCnt = 0;

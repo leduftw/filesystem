@@ -13,6 +13,7 @@ class File;
 
 class FS {
 public:
+
 	~FS() { }
 
 	static char mount(Partition *);
@@ -30,8 +31,10 @@ public:
 	static char deleteFile(char *fname);
 
 protected:
+
 	FS() { }
 	static KernelFS *myImpl;
+
 };
 
 #endif

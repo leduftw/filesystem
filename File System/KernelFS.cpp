@@ -2,29 +2,31 @@
 #include "File.h"
 #include "part.h"
 #include "FS.h"
-#include "Index.h"
-#include "Directory.h"
+#include "Cluster.h"
 #include "Utils.h"
 
 using namespace std;
 
 KernelFS::~KernelFS() {
+	/*
 	delete disk;
 
 	CloseHandle(canMount);
 	CloseHandle(canUnmount);
 	CloseHandle(canFormat);
 	CloseHandle(mutex);
+	*/
 }
 
 char KernelFS::mount(Partition *partition) {
-	if (partition == nullptr) {
+	if (!partition) {
 		return 0;  // return failure
 	}
 
 	wait(canMount);  // if partition is already mounted, this thread waits
 
-	disk = new Disk(partition);  // mount the partition
+	disk = new Disk(partition);
+	cache = new LRUCache(disk);
 
 	return 1;  // return success
 }
@@ -34,7 +36,10 @@ char KernelFS::unmount() {
 		wait(canUnmount);
 	}
 
-	delete disk;  // then unmount
+	delete cache;
+	cache = nullptr;
+
+	delete disk;
 	disk = nullptr;
 
 	signal(canMount);  // tell others they can now mount
@@ -42,7 +47,7 @@ char KernelFS::unmount() {
 }
 
 char KernelFS::format() {
-	if (!disk) {
+	if (!disk || !cache) {
 		return 0;  // there is no partition to format
 	}
 
@@ -57,9 +62,6 @@ char KernelFS::format() {
 	if (!disk->initializeBitVector()) return 0;  // failure on initializing bit vector
 	if (!disk->initializeRootDir()) return 0;  // failure on initializing first-level index of root directory
 
-	disk->getBitVector()->save();
-	disk->getFirstLevelDirectory()->save();
-
 	signal(mutex);
 
 	formatCalled = false;
@@ -67,28 +69,28 @@ char KernelFS::format() {
 }
 
 FileCnt KernelFS::readRootDir() {
-	if (!disk) {
+	if (!disk || !cache) {
 		return -1;  // partition hasn't been mounted yet
 	}
 
 	FileCnt cnt = 0;  // answer
 
-	Index firstLevel(disk->getPartition(), disk->getFirstLevelDirectory()->getClusterNo());  // first-level index of root directory
+	IndexEntry *firstLevel = (IndexEntry *)disk->getFirstLevelDirectory()->getData();  // first-level index of root directory
 
 	// Go through all entries of first-level index
-	for (int i = 0; i < firstLevel.size(); i++) {
+	for (int i = 0; i < ClusterSize / sizeof(IndexEntry); i++) {
 		if (firstLevel[i] == 0) continue;  // doesn't point to second-level index
 
-		Index secondLevel(disk->getPartition(), firstLevel[i]);  // second-level index of root directory
-
 		// Go through all entries of second-level index
-		for (int j = 0; j < secondLevel.size(); j++) {
+		for (int j = 0; j < ClusterSize / sizeof(IndexEntry); j++) {
+			IndexEntry *secondLevel = (IndexEntry *)cache->get(firstLevel[i])->getData();  // second-level index of root directory
+
 			if (secondLevel[j] == 0) continue;  // doesn't point to data cluster
 
-			Directory directory(disk->getPartition(), secondLevel[j]);  // data cluster of root directory
-
 			// Go through all entries of data cluster
-			for (int k = 0; k < directory.size(); k++) {
+			for (int k = 0; k < ClusterSize / sizeof(DirectoryEntry); k++) {
+				DirectoryEntry *directory = (DirectoryEntry *)cache->get(secondLevel[j])->getData();  // data cluster of root directory
+
 				// Check first char in each entry. If it's not 0, then that entry contains info about some file.
 				if (directory[k].fname[0]) {
 					cnt++;
@@ -119,16 +121,18 @@ char KernelFS::doesExist(char *fname) {
 
 	if (givenName.length() > 8 || givenExtension.length() > 3) return 0;
 
-	Index firstLevel(disk->getPartition(), disk->getFirstLevelDirectory()->getClusterNo());
-	for (int i = 0; i < firstLevel.size(); i++) {
+	IndexEntry *firstLevel = (IndexEntry *)disk->getFirstLevelDirectory()->getData();
+	for (int i = 0; i < ClusterSize / sizeof(IndexEntry); i++) {
 		if (firstLevel[i] == 0) continue;
 
-		Index secondLevel(disk->getPartition(), firstLevel[i]);
-		for (int j = 0; j < secondLevel.size(); j++) {
+		for (int j = 0; j < ClusterSize / sizeof(IndexEntry); j++) {
+			IndexEntry *secondLevel = (IndexEntry *)cache->get(firstLevel[i])->getData();
+
 			if (secondLevel[j] == 0) continue;
 
-			Directory directory(disk->getPartition(), secondLevel[j]);
-			for (int k = 0; k < directory.size(); k++) {
+			for (int k = 0; k < ClusterSize / sizeof(DirectoryEntry); k++) {
+				DirectoryEntry *directory = (DirectoryEntry *)cache->get(secondLevel[j])->getData();  // data cluster of root directory
+
 				if (!directory[k].fname[0]) continue;  // entry does not contain file
 
 				int endName = 0;
@@ -141,7 +145,7 @@ char KernelFS::doesExist(char *fname) {
 
 				int endExt = 0;
 				while (endExt < FEXTLEN && directory[k].ext[endExt] != ' ') {
-					endExt;
+					endExt++;
 				}
 				string curExtension(directory[k].ext, directory[k].ext + endExt);
 
@@ -155,12 +159,8 @@ char KernelFS::doesExist(char *fname) {
 	return 0;  // searched file doesn't exists
 }
 
-// Prolazimo kroz sve ulaze u direktorijumu. Ako fajl ne postoji (!doesExist), nadjemo ulaz koji je slobodan
-// i tu ce biti deskriptor za taj fajl. U bit vektoru nadjemo slobodan blok i to ce biti indeks prvog nivoa za nas fajl.
-// Indeks prvog nivoa popunimo nulama i u bit vektoru kazemo da je ovaj blok sada zauzet.
-// Paziti na ogranicenja! Ako je mode == 'w', zovemo prvo FS::deleteFile(fname) a zatim kreiramo novi prazan fajl.
 File* KernelFS::open(char *fname, char mode) {
-	if (!disk || !fname || !Utils::isCorrect(mode)) {   // invalid arguments
+	if (!disk || !cache || !fname || !Utils::isCorrect(mode)) {
 		return nullptr;
 	}
 
@@ -178,7 +178,7 @@ File* KernelFS::open(char *fname, char mode) {
 	string givenName = tokens[0];
 	string givenExtension = tokens[1];
 
-	if (givenName.length() > 8 || givenExtension.length() > 3) return 0;
+	if (givenName.length() > 8 || givenExtension.length() > 3) return nullptr;
 
 	bool exist = doesExist(fname);
 
@@ -190,8 +190,8 @@ File* KernelFS::open(char *fname, char mode) {
 		FS::deleteFile(fname);
 	}
 
-	Index firstLevel(disk->getPartition(), disk->getFirstLevelDirectory()->getClusterNo());
-	for (int i = 0; i < firstLevel.size(); i++) {
+	IndexEntry *firstLevel = (IndexEntry *)disk->getFirstLevelDirectory()->getData();
+	for (int i = 0; i < ClusterSize / sizeof(IndexEntry); i++) {
 		if (firstLevel[i] == 0) {
 			if (exist) continue;
 
@@ -199,15 +199,14 @@ File* KernelFS::open(char *fname, char mode) {
 			if (free == 0) return nullptr;
 
 			disk->getBitVector()->occupy(free);
-			Cluster *secondLevel = disk->getCluster(free);
+			Cluster *secondLevel = cache->get(free);
 			secondLevel->clear();
-			delete secondLevel;
 
 			firstLevel[i] = free;
 		}
 
-		Index secondLevel(disk->getPartition(), firstLevel[i]);
-		for (int j = 0; j < secondLevel.size(); j++) {
+		for (int j = 0; j < ClusterSize / sizeof(IndexEntry); j++) {
+			IndexEntry *secondLevel = (IndexEntry *)cache->get(firstLevel[i])->getData();
 			if (secondLevel[j] == 0) {
 				if (exist) continue;
 
@@ -215,61 +214,67 @@ File* KernelFS::open(char *fname, char mode) {
 				if (free == 0) return nullptr;
 
 				disk->getBitVector()->occupy(free);
-				Cluster *data = disk->getCluster(free);
+				Cluster *data = cache->get(free);
 				data->clear();
-				delete data;
 
 				secondLevel[j] = free;
 			}
 
-			Directory dir(disk->getPartition(), secondLevel[j]);
-			for (int k = 0; k < dir.size(); k++) {
-				if (exist && dir[k].fname[0]) {
+			for (int k = 0; k < ClusterSize / sizeof(DirectoryEntry); k++) {
+				Cluster *dir = cache->get(secondLevel[j]);
+				DirectoryEntry *directory = (DirectoryEntry *)dir->getData();
+				if (exist && directory[k].fname[0]) {
 					int endName = 0;
-					while (endName < FNAMELEN && dir[k].fname[endName] != ' ') {
+					while (endName < FNAMELEN && directory[k].fname[endName] != ' ') {
 						endName++;
 					}
 
-					string curName(dir[k].fname, dir[k].fname + endName);
+					string curName(directory[k].fname, directory[k].fname + endName);
 
 					int endExt = 0;
-					while (endExt < FEXTLEN && dir[k].ext[endExt] != ' ') {
-						endExt;
+					while (endExt < FEXTLEN && directory[k].ext[endExt] != ' ') {
+						endExt++;
 					}
-					string curExtension(dir[k].ext, dir[k].ext + endExt);
+					string curExtension(directory[k].ext, directory[k].ext + endExt);
 
 					if (givenName == curName && givenExtension == curExtension) {  // file is found
-						
-						File *ret = new File(disk, dir[k].firstLevelCluster, dir.getClusterNo(), mode, dir[k].fileSize);
+
+						File *ret = new File(disk, cache, directory[k].firstLevelCluster, dir->getClusterNo(), k, mode, directory[k].fileSize);
 						ret->myImpl->path = string(fname, strlen(fname));
 
 						return ret;
 					}
-				} else if (!exist && !dir[k].fname[0]) {
+				} else if (!exist && !directory[k].fname[0]) {
 					// mode must be 'w'
 
 					for (int i = 0; i < (int)givenName.length(); i++) {
-						dir[k].fname[i] = givenName[i];
+						directory[k].fname[i] = givenName[i];
 					}
-					
-					for (int i = 0; i < (int)givenExtension.length(); i++) {
-						dir[k].ext[i] = givenExtension[i];
+					for (int i = givenName.length(); i < (int)FNAMELEN; i++) {
+						directory[k].fname[i] = ' ';  // pad with spaces
 					}
 
-					dir[k].notUsed = 0;
+
+					for (int i = 0; i < (int)givenExtension.length(); i++) {
+						directory[k].ext[i] = givenExtension[i];
+					}
+					for (int i = givenExtension.length(); i < (int)FEXTLEN; i++) {
+						directory[k].ext[i] = ' ';  // pad with spaces
+					}
+
+					directory[k].notUsed = 0;
 
 					ClusterNo free = disk->getBitVector()->findFreeCluster();
 					if (free == 0) return nullptr;
-					dir[k].firstLevelCluster = free;
+					directory[k].firstLevelCluster = free;
 					disk->getBitVector()->occupy(free);
-					Cluster *firstLevel = disk->getCluster(free);
+					Cluster *firstLevel = cache->get(free);
 					firstLevel->clear();
-					delete firstLevel;
 
-					dir[k].fileSize = 0;
-					dir[k].free[0]++;  // number of threads reading file
+					directory[k].fileSize = 0;
+					directory[k].free[0]++;  // number of threads reading file
 
-					File *ret = new File(disk, free, dir.getClusterNo(), mode, 0);
+					File *ret = new File(disk, cache, free, dir->getClusterNo(), k, mode, 0);
 					ret->myImpl->path = string(fname, strlen(fname));
 
 					return ret;
@@ -287,28 +292,70 @@ char KernelFS::deleteFile(char *fname) {
 		return 0;
 	}
 
-	/*
-	DirectoryEntry *entry = disk->findFile(fname);
-	if (!entry) return 0;
+	if (strlen(fname) < 4) return 0;
 
-	// free[0] represents number of threads that are using that file
-	if (entry->free[0]) return 0;  // other threads are using this file
+	string whole(fname + 1);
 
-	// Delete contents of file
-	File *file = FS::open(fname, 'w');
-	if (!file) return 0;
-	file->seek(0);
-	file->truncate();
-	delete file;
+	vector<string> tokens = Utils::split(whole, ".");
+	if (tokens.size() != 2) return 0;
 
-	// Clear entry
-	memset(entry->fname, 0, FNAMELEN);
-	memset(entry->ext, 0, FEXTLEN);
-	entry->notUsed = 0;
-	entry->firstLevelCluster = 0;
-	entry->fileSize = 0;
-	memset(entry->free, 0, 12);
-	*/
+	string givenName = tokens[0];
+	string givenExtension = tokens[1];
+
+	if (givenName.length() > 8 || givenExtension.length() > 3) return 0;
+
+	IndexEntry *firstLevel = (IndexEntry *)disk->getFirstLevelDirectory()->getData();
+	for (int i = 0; i < ClusterSize / sizeof(IndexEntry); i++) {
+		if (firstLevel[i] == 0) continue;
+
+		for (int j = 0; j < ClusterSize / sizeof(IndexEntry); j++) {
+			IndexEntry *secondLevel = (IndexEntry *)cache->get(firstLevel[i])->getData();
+			if (secondLevel[j] == 0) continue;
+
+			for (int k = 0; k < ClusterSize / sizeof(DirectoryEntry); k++) {
+				Cluster *dir = cache->get(secondLevel[j]);
+				DirectoryEntry *directory = (DirectoryEntry *)dir->getData();
+				if (!directory[k].fname[0]) continue;
+				int endName = 0;
+				while (endName < FNAMELEN && directory[k].fname[endName] != ' ') {
+					endName++;
+				}
+
+				string curName(directory[k].fname, directory[k].fname + endName);
+
+				int endExt = 0;
+				while (endExt < FEXTLEN && directory[k].ext[endExt] != ' ') {
+					endExt++;
+				}
+				string curExtension(directory[k].ext, directory[k].ext + endExt);
+
+				if (givenName == curName && givenExtension == curExtension) {  // file descriptor is found
+
+					File *ret = new File(disk, cache, directory[k].firstLevelCluster, dir->getClusterNo(), k, 'w', directory[k].fileSize);
+					ret->myImpl->path = string(fname, strlen(fname));
+					
+					ret->seek(0);
+					ret->truncate();
+
+					delete ret;
+
+					// Clear entry
+					memset(directory[k].fname, 0, FNAMELEN);
+					memset(directory[k].ext, 0, FEXTLEN);
+					directory[k].notUsed = 0;
+
+					cache->get(directory[k].firstLevelCluster)->clear();
+					disk->getBitVector()->makeFree(directory[k].firstLevelCluster);
+					directory[k].firstLevelCluster = 0;
+
+					directory[k].fileSize = 0;
+					memset(directory[k].free, 0, 12);
+
+					return 1;
+				}
+			}
+		}
+	}
 
 	return 0;
 }

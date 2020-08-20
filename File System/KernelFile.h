@@ -5,7 +5,7 @@
 
 #include "part.h"
 #include "Disk.h"
-#include "Directory.h"
+#include "LRUCache.h"
 
 using namespace std;
 
@@ -15,7 +15,7 @@ class KernelFile {
 public:
 
 
-	KernelFile(Disk *d, ClusterNo firstLevel, ClusterNo dir, char mode, BytesCnt sz);
+	KernelFile(Disk *d, LRUCache *c, ClusterNo firstLevel, ClusterNo dir, int entry, char mode, BytesCnt sz);
 
 	/*
 		Called upon closing.
@@ -70,8 +70,13 @@ private:
 	BytesCnt cursor, fileSize;
 
 	Disk *disk;
-	Index firstLevel;  // first-level index cluster for this file
-	Directory directory;  // directory cluster which contains descriptor for this file
+	LRUCache *cache;
+
+	ClusterNo first;  // first-level index cluster number for this file
+
+	ClusterNo dir;  // directory cluster number which contains descriptor for this file
+	int entryNo;  // number of entry which contains descriptor for this file
+
 	char mode;
 
 	string path;

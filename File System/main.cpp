@@ -60,7 +60,7 @@ int publicMain() {
 	return 0;
 }
 
-void mountAndFormatTest() {
+void initTest() {
 	// Test za disk sa 1000 klastera. Napomene za proveru ispravnosti:
 
 	// Jedan klaster zauzima 2048 adresa (2048 bajtova) u hexdump-u odnosno prvi klaster
@@ -87,21 +87,32 @@ void mountAndFormatTest() {
 	}
 
 	cout << "Format successful." << "\n";
+
+	if (!FS::unmount()) {
+		cout << "Unmount unsuccessful.\n";
+		exit(1);
+	}
+
+	cout << "Unmount successful." << "\n";
 }
 
-void oneThreadCopyPaste() {
+void oneThreadTwoCopyPaste() {
 	// ucitavamo ulazni fajl u bafer
-	FILE *file = fopen("ulaz.dat", "rb");
-	if (file == 0) {
-		cout << "GRESKA: Nije nadjen ulazni fajl 'ulaz.dat' u os domacinu!" << endl;
+	FILE *file1 = fopen("ulaz1.dat", "rb"), *file2 = fopen("ulaz2.dat", "rb");
+	if (file1 == 0 || file2 == 0) {
+		cout << "GRESKA: Nisu nadjeni ulazni fajlovi 'ulaz1.dat' i 'ulaz2.dat' u os domacinu!" << endl;
 		system("PAUSE");  // pauzira main nit dok user ne pritisne bilo sta
 		return;  // exit program
 	}
 
-	ulazBuffer = new char[32 * 1024 * 1024];	// 32MB
-	ulazSize = fread(ulazBuffer, 1, 32 * 1024 * 1024, file);
+	char *ulazBuffer1 = new char[32 * 1024 * 1024];	// 32MB
+	long ulazSize1 = fread(ulazBuffer1, 1, 32 * 1024 * 1024, file1);
 
-	fclose(file);
+	char *ulazBuffer2 = new char[32 * 1024 * 1024];	// 32MB
+	long ulazSize2 = fread(ulazBuffer2, 1, 32 * 1024 * 1024, file2);
+
+	fclose(file1);
+	fclose(file2);
 
 	///////////////////////////////////////////////////////////////////////////
 	wait(mutex);
@@ -125,66 +136,154 @@ void oneThreadCopyPaste() {
 	signal(mutex);
 	///////////////////////////////////////////////////////////////////////////
 
-	char filepath[] = "/fajl1.dat";
-	File *f = FS::open(filepath, 'w');
+	char filepath1[] = "/fajl1.dat";
+	File *f1 = FS::open(filepath1, 'w');
+
+	char filepath2[] = "/fajl2.dat";
 
 	wait(mutex);
-	cout << "Kreiran fajl '" << filepath << "'" << endl;
+	cout << "Kreiran fajl '" << filepath1 << "'" << endl;
 	signal(mutex);
 
-	f->write(ulazSize, ulazBuffer);
+	f1->write(ulazSize1, ulazBuffer1);
 
 	wait(mutex);
-	cout << "Prepisan sadrzaj 'ulaz.dat' u '" << filepath << "'" << endl;
+	cout << "Prepisan sadrzaj 'ulaz1.dat' u '" << filepath1 << "'" << endl;
 	signal(mutex);
 
-	delete f;
-	delete[] ulazBuffer;
+	wait(mutex);
+	cout << "Velicina fajla '" << filepath1 << "': " << f1->getFileSize() << endl;
+	signal(mutex);
+
+	delete f1;
+	delete[] ulazBuffer1;
 
 	wait(mutex);
-	cout << "Zatvoren fajl '" << filepath << "'" << endl;
+	cout << "Zatvoren fajl '" << filepath1 << "'" << endl;
 	signal(mutex);
 	///////////////////////////////////////////////////////////////////////////
 
-	/*
-	f = FS::open(filepath, 'r');
-
 	wait(mutex);
-	cout << "Otvoren fajl " << filepath << "" << endl;
+	cout << "Broj fajlova u root direktorijumu: " << FS::readRootDir() << "\n";
+
+	cout << filepath1 << " postoji: " << (FS::doesExist(filepath1) ? "da" : "ne") << "\n";
+	cout << filepath2 << " postoji: " << (FS::doesExist(filepath2) ? "da" : "ne") << "\n";
 	signal(mutex);
 
-	ofstream fout("izlaz1.dat", ios::out | ios::binary);
-	char *buff = new char[f->getFileSize()];
-	f->read(f->getFileSize(), buff);
-	fout.write(buff, f->getFileSize());
+	File *f2 = FS::open(filepath1, 'r');
 
 	wait(mutex);
-	cout <<"Upisan '" << filepath << "' u fajl os domacina 'izlaz1.dat'" << endl;
+	cout << "Otvoren fajl " << filepath1 << "" << endl;
 	signal(mutex);
 
-	delete[] buff;
-	fout.close();
-	delete f;
+	wait(mutex);
+	cout << "Velicina fajla '" << filepath1 << "': " << f2->getFileSize() << endl;
+	signal(mutex);
+
+	ofstream fout1("izlaz1.dat", ios::out | ios::binary);
+	char *buff1 = new char[f2->getFileSize()];
+	f2->read(f2->getFileSize(), buff1);
+	fout1.write(buff1, f2->getFileSize());
 
 	wait(mutex);
-	cout << "Zatvoren fajl " << filepath << "" << endl;
+	cout <<"Upisan '" << filepath1 << "' u fajl os domacina 'izlaz1.dat'" << endl;
+	signal(mutex);
+
+	delete[] buff1;
+	fout1.close();
+	delete f2;
+
+	wait(mutex);
+	cout << "Zatvoren fajl " << filepath1 << "" << endl;
 	signal(mutex);
 	///////////////////////////////////////////////////////////////////////////
 
 	
-	*/
+	File *f3 = FS::open(filepath2, 'w');
 
-	// FS::unmount();
+	wait(mutex);
+	cout << "Kreiran fajl '" << filepath2 << "'" << endl;
+	signal(mutex);
+
+	f3->write(ulazSize2, ulazBuffer2);
+
+	wait(mutex);
+	cout << "Prepisan sadrzaj 'ulaz2.dat' u '" << filepath2 << "'" << endl;
+	signal(mutex);
+
+	wait(mutex);
+	cout << "Velicina fajla '" << filepath2 << "': " << f3->getFileSize() << endl;
+	signal(mutex);
+
+	delete f3;
+	delete[] ulazBuffer2;
+
+	wait(mutex);
+	cout << "Zatvoren fajl '" << filepath2 << "'" << endl;
+	signal(mutex);
+
+	wait(mutex);
+	cout << filepath1 << " postoji: " << (FS::doesExist(filepath1) ? "da" : "ne") << "\n";
+	cout << filepath2 << " postoji: " << (FS::doesExist(filepath2) ? "da" : "ne") << "\n";
+	signal(mutex);
+	///////////////////////////////////////////////////////////////////////////
+
+	wait(mutex);
+	cout << "Broj fajlova u root direktorijumu: " << FS::readRootDir() << "\n";  // 2
+	signal(mutex);
+
+	File *f4 = FS::open(filepath2, 'r');
+
+	wait(mutex);
+	cout << "Otvoren fajl " << filepath2 << "" << endl;
+	signal(mutex);
+
+	wait(mutex);
+	cout << "Velicina fajla '" << filepath2 << "': " << f4->getFileSize() << endl;
+	signal(mutex);
+
+	ofstream fout2("izlaz2.dat", ios::out | ios::binary);
+	char *buff2 = new char[f4->getFileSize()];
+	f4->read(f4->getFileSize(), buff2);
+	fout2.write(buff2, f4->getFileSize());
+
+	wait(mutex);
+	cout << "Upisan '" << filepath2 << "' u fajl os domacina 'izlaz2.dat'" << endl;
+	signal(mutex);
+
+	delete[] buff2;
+	fout2.close();
+	delete f4;
+
+	wait(mutex);
+	cout << "Zatvoren fajl " << filepath2 << "" << endl;
+	signal(mutex);
+
+	if (!FS::deleteFile(filepath1)) {
+		cout << "Neuspesno brisanje " << filepath1 << "\n";
+		exit(1);
+	}
+
+	wait(mutex);
+	cout << "Fajl " << filepath1 << " uspesno obrisan.\n";
+
+	cout << filepath1 << " postoji: " << (FS::doesExist(filepath1) ? "da" : "ne") << "\n";
+	cout << filepath2 << " postoji: " << (FS::doesExist(filepath2) ? "da" : "ne") << "\n";
+	cout << "Broj fajlova u direktorijumu: " << FS::readRootDir() << "\n";
+	signal(mutex);
+	///////////////////////////////////////////////////////////////////////////
+
+
+	FS::unmount();
+
 	wait(mutex);
 	cout << "Demontirana particija p1" << endl;
 	signal(mutex);
-
-	delete partition;
 }
 
 int main() {
-	// mountAndFormatTest();
-	oneThreadCopyPaste();
+	//initTest();
+	oneThreadTwoCopyPaste();
 
 	// return publicMain();
 }

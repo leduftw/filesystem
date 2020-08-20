@@ -2,7 +2,6 @@
 #include <vector>
 
 #include "Disk.h"
-#include "Utils.h"
 
 using namespace std;
 
@@ -24,15 +23,18 @@ Disk::Disk(Partition *p) : partition(p) {
 	// so first-level index of root directory has ordinal number == clustersForBitVector
 	ClusterNo rootDirCluster = clustersForBitVector;
 
-	firstLevelDirectory = new Index(partition, rootDirCluster);
+	firstLevelDirectory = new Cluster(partition, rootDirCluster);
 }
 
 Disk::~Disk() {
+	delete firstLevelDirectory;
+	firstLevelDirectory = nullptr;
+
 	delete bitVector;
 	bitVector = nullptr;
 
-	delete firstLevelDirectory;
-	firstLevelDirectory = nullptr;
+	delete partition;
+	partition = nullptr;
 }
 
 bool Disk::initializeBitVector() {

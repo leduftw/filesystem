@@ -33,7 +33,7 @@ private:
 	friend class FS;
 	friend class KernelFS;
 
-	File(Disk *disk, ClusterNo firstLevel, ClusterNo dir, char mode, BytesCnt sz);  // instance of File can only be created with FS::open()
+	File(Disk *disk, LRUCache *c, ClusterNo firstLevel, ClusterNo dir, int entry, char mode, BytesCnt sz);  // instance of File can only be created with FS::open()
 	KernelFile *myImpl;
 };
 

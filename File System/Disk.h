@@ -3,8 +3,6 @@
 
 #include "part.h"
 #include "BitVector.h"
-#include "Index.h"
-#include "Directory.h"
 
 class Disk {
 
@@ -12,7 +10,8 @@ class Disk {
 
 	// Bit vector and first-level index of root directory are always cached in memory
 	BitVector *bitVector;
-	Index *firstLevelDirectory;
+	Cluster *firstLevelDirectory;
+
 
 public:
 
@@ -37,7 +36,7 @@ public:
 	/*
 		Returns first-level index of root directory.
 	*/
-	Index* getFirstLevelDirectory() const {
+	Cluster* getFirstLevelDirectory() const {
 		return firstLevelDirectory;
 	}
 
@@ -58,6 +57,7 @@ public:
 
 	/*
 		Returns pointer to Cluster object with given ClusterNo.
+		Use LRUCache::get(ClusterNo) instead of this!
 	*/
 	Cluster* getCluster(ClusterNo) const;
 

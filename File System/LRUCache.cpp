@@ -7,6 +7,12 @@ LRUCache::LRUCache(Disk *d) : disk(d) {
 	capacity = n / FACTOR;
 }
 
+LRUCache::~LRUCache() {
+	for (auto data : lruList) {
+		delete data.second;  // save cached cluster data to disk
+	}
+}
+
 void LRUCache::moveToFront(ClusterNo key, Cluster *value) {
 	// Erase and add a new entry to front
 	lruList.erase(hash[key]);  // this is O(1) since we are using iterator
@@ -19,8 +25,10 @@ Cluster* LRUCache::get(ClusterNo key) {
 		return nullptr;
 	}
 
-	if (hash.find(key) == hash.end()) {
-		return nullptr;
+	if (hash.find(key) == hash.end()) {  // if not in cache, get it from disk
+		Cluster *cluster = new Cluster(disk->getPartition(), key);
+		put(key, cluster);
+		return cluster;
 	}
 
 	// Move the (key, value) pair to front
@@ -37,6 +45,11 @@ void LRUCache::put(ClusterNo key, Cluster *value) {
 		hash[key] = lruList.begin();
 		if (hash.size() > capacity) {  // erase
 			hash.erase(lruList.back().first);
+
+			// Save to the disk
+			Cluster *toSave = lruList.back().second;
+			delete toSave;  // saves data
+
 			lruList.pop_back();
 		}
 	}

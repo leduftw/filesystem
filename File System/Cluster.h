@@ -2,13 +2,36 @@
 #define CLUSTER_H
 
 #include <cstring>
+
 #include "part.h"
+#include "FS.h"
+
+typedef ClusterNo IndexEntry;  // entries for first-level and second-level index have size of 32 bits
+
+/*
+	Entries in data cluster of root directory have size of 32 bytes.
+*/
+#pragma pack(push, 1)  // disable padding for following structure
+struct DirectoryEntry {
+	char fname[FNAMELEN];  // 8 bytes
+	char ext[FEXTLEN];  // 3 bytes
+
+	char notUsed = 0;  // 1 byte
+
+	ClusterNo firstLevelCluster;  // 4 bytes
+	BytesCnt fileSize;  // 4 bytes
+
+	char free[12];  // 12 bytes
+};  // total: 32 bytes
+#pragma pack(pop)  // returns to normal settings
 
 /*
 	Cluster class represents arbitrary cluster from partition with no particular structure.
 */
 class Cluster {
 protected:
+
+	static const int sz;
 
 	Partition *partition;
 
@@ -26,13 +49,13 @@ public:
 	/*
 		Saves data to disk and deallocates resources.
 	*/
-	virtual ~Cluster();
+	~Cluster();
 
 	/*
 		Returns the size of this cluster.
 	*/
-	virtual int size() const {
-		return ClusterSize;
+	int size() const {
+		return sz;
 	}
 
 	/*
