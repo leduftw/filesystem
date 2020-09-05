@@ -3,18 +3,21 @@
 ##
 ## Get latest from https://github.com/github/gitignore/blob/master/VisualStudio.gitignore
 
+# Added independently
+*.sln
+*.vcxproj
+*.vcxproj.filters
+*.vcxproj.user
+*.jpg
+*.png
+*.zip
+
 # User-specific files
 *.rsuser
 *.suo
 *.user
 *.userosscache
 *.sln.docstates
-
-*.sln
-*.vcxproj
-*.vcxproj.filters
-*.vcxproj.user
-
 
 # User-specific files (MonoDevelop/Xamarin Studio)
 *.userprefs
