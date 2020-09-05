@@ -1,5 +1,4 @@
-#ifndef FS_H
-#define FS_H
+#pragma once
 
 typedef long FileCnt;
 typedef unsigned long BytesCnt;
@@ -10,7 +9,11 @@ const unsigned int FEXTLEN = 3;
 class KernelFS;
 class Partition;
 class File;
+class KernelFile;
 
+/*
+	Wrapper for KernelFS class.
+*/
 class FS {
 public:
 
@@ -32,9 +35,9 @@ public:
 
 protected:
 
+	friend class KernelFile;
+
 	FS() { }
 	static KernelFS *myImpl;
 
 };
-
-#endif

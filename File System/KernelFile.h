@@ -1,5 +1,4 @@
-#ifndef KERNELFILE_H
-#define KERNELFILE_H
+#pragma once
 
 #include <string>
 
@@ -14,8 +13,10 @@ typedef unsigned long BytesCnt;
 class KernelFile {
 public:
 
-
-	KernelFile(Disk *d, LRUCache *c, ClusterNo firstLevel, ClusterNo dir, int entry, char mode, BytesCnt sz);
+	/*
+		Creates file object. Initializes all necessary data members.
+	*/
+	KernelFile(Disk *d, Cache *c, ClusterNo firstLevel, ClusterNo dir, int entry, char mode, BytesCnt sz);
 
 	/*
 		Called upon closing.
@@ -70,11 +71,11 @@ private:
 	BytesCnt cursor, fileSize;
 
 	Disk *disk;
-	LRUCache *cache;
+	Cache *cache;
 
 	ClusterNo first;  // first-level index cluster number for this file
 
-	ClusterNo dir;  // directory cluster number which contains descriptor for this file
+	ClusterNo dir;  // directory data cluster number which contains descriptor for this file
 	int entryNo;  // number of entry which contains descriptor for this file
 
 	char mode;
@@ -82,5 +83,3 @@ private:
 	string path;
 
 };
-
-#endif

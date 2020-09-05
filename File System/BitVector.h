@@ -1,8 +1,12 @@
-#ifndef BITVECTOR_H
-#define BITVECTOR_H
+#pragma once
+
+#include <Windows.h>
 
 #include "part.h"
 #include "Cluster.h"
+
+#define wait(semaphore) WaitForSingleObject(semaphore, INFINITE)
+#define signal(semaphore) ReleaseSemaphore(semaphore, 1, NULL)
 
 class BitVector {
 
@@ -10,6 +14,8 @@ class BitVector {
 
 	Cluster **clusters;  // ** because Cluster does not have default constructor
 	ClusterNo sz;  // length of clusters
+
+	HANDLE mutex;
 
 	/*
 		Gets value of bit bitNo in cluster clusterNo.
@@ -47,7 +53,7 @@ public:
 	}
 
 	/*
-		Saves cluster with given number to disk.
+		Saves bit vector cluster with given number to disk.
 	*/
 	bool save(ClusterNo cluster) {
 		if (cluster >= sz) return false;
@@ -69,7 +75,7 @@ public:
 	}
 
 	/*
-		Sets all bits in bit vector to 0.
+		Resets all bits in bit vector (making all clusters free).
 	*/
 	bool clear() {
 		bool status = true;
@@ -105,17 +111,15 @@ public:
 	bool isFree(ClusterNo) const;
 
 	/*
-		Sets corresponding bit to 1 (making cluster with given number on partition free).
+		Sets corresponding bit (making cluster with given number on partition free).
 		Returns true if operation went successful and false otherwise.
 	*/
 	bool makeFree(ClusterNo);
 
 	/*
-		Sets corresponding bit to 0 (making cluster with given number on partition occupied).
+		Resets corresponding bit (making cluster with given number on partition occupied).
 		Returns true if operation went successful and false otherwise.
 	*/
 	bool occupy(ClusterNo);
 
 };
-
-#endif

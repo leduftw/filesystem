@@ -1,10 +1,13 @@
-#ifndef KERNELFS_H
-#define KERNELFS_H
+#pragma once
 
 #include <Windows.h>
+#include <unordered_map>
+#include <string>
 
 #include "Disk.h"
+#include "Cache.h"
 #include "LRUCache.h"
+#include "KernelFile.h"
 
 #define wait(semaphore) WaitForSingleObject(semaphore, INFINITE)
 #define signal(semaphore) ReleaseSemaphore(semaphore, 1, NULL)
@@ -53,16 +56,25 @@ public:
 	char deleteFile(char *fname);
 
 private:
+	
+	friend class KernelFile;
+
 	// Second argument is initial count and third is maximum count
 	HANDLE canMount = CreateSemaphore(NULL, 1, 1, NULL);
 	HANDLE canUnmount = CreateSemaphore(NULL, 0, 1, NULL);
 	HANDLE canFormat = CreateSemaphore(NULL, 0, 1, NULL);
 	HANDLE mutex = CreateSemaphore(NULL, 1, 1, NULL);
+	HANDLE formatUnmountMutex = CreateSemaphore(NULL, 1, 1, NULL);
+
+	HANDLE fileMutex = CreateSemaphore(NULL, 1, 1, NULL);
+
+	// unordered_map<string, SRWLOCK *> srw;
+	unordered_map<string, HANDLE> srw;
 
 	Disk *disk = nullptr;
-	LRUCache *cache = nullptr;
+	Cache *cache = nullptr;
 
-	// Number of currently opened files
+	// Unmount can only happen if all files are closed
 	int openFilesCnt = 0;
 
 	// If format is called, new tries of opening files fail until formatting is done
@@ -76,5 +88,3 @@ private:
 	}
 
 };
-
-#endif

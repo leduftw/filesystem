@@ -6,7 +6,7 @@
 #include <windows.h>
 #include <ctime>
 
-#include "FS.h"
+#include "fs.h"
 #include "file.h"
 #include "part.h"
 
@@ -30,3 +30,8 @@ extern int ulazSize;
 
 DWORD WINAPI nit1run();
 DWORD WINAPI nit2run();
+
+/*
+DWORD WINAPI nit1run_new();
+DWORD WINAPI nit2run_new();
+*/

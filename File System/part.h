@@ -8,16 +8,37 @@ class PartitionImpl;
 
 class Partition {
 public:
-	Partition(char *);  // parameter is path to .ini file
 
+	/*
+		Parameter is path to configuration file.
+		Example: "p1.ini".
+	*/
+	Partition(char *pathToConfFile);
+
+	/*
+		Returns number of clusters.
+	*/
 	virtual ClusterNo getNumOfClusters() const;
 
-	virtual int readCluster(ClusterNo, char *buffer);  // returns 1 on success, 0 otherwise
-	virtual int writeCluster(ClusterNo, const char *buffer);  // returns 1 on success, 0 otherwise
+	/*
+		Returns 1 on success and 0 otherwise.
+	*/
+	virtual int readCluster(ClusterNo, char *buffer);
 
+	/*
+		Returns 1 on success and 0 otherwise.
+	*/
+	virtual int writeCluster(ClusterNo, const char *buffer);
+
+	/*
+		Call at the end!!!
+	*/
 	virtual ~Partition();
+
 private:
+
 	PartitionImpl *myImpl;
+
 };
 
 #endif

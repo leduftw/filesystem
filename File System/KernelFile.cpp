@@ -3,7 +3,7 @@
 #include "KernelFile.h"
 #include "KernelFS.h"
 
-KernelFile::KernelFile(Disk *d, LRUCache *c, ClusterNo start, ClusterNo directory, int entry, char m, BytesCnt sz) {
+KernelFile::KernelFile(Disk *d, Cache *c, ClusterNo start, ClusterNo directory, int entry, char m, BytesCnt sz) {
 	disk = d;
 	cache = c;
 
@@ -15,17 +15,42 @@ KernelFile::KernelFile(Disk *d, LRUCache *c, ClusterNo start, ClusterNo director
 	fileSize = sz;
 
 	isClosed = false;
-	cursor = 0;  // ?
+	cursor = (mode == 'a' ? fileSize : 0);
 }
 
 KernelFile::~KernelFile() {
 	isClosed = true;
 
-	if (mode == 'w') {
+	DirectoryEntry *directory = (DirectoryEntry *)cache->getCluster(dir)->getData();
+
+	if (mode != 'r') {
 		// Update fileSize field in file descriptor in root directory
-		DirectoryEntry *directory = (DirectoryEntry *)cache->get(dir)->getData();
 		directory[entryNo].fileSize = fileSize;
 	}
+
+	wait(FS::myImpl->fileMutex);
+	directory[entryNo].free[0]--;
+	signal(FS::myImpl->fileMutex);
+
+	// If all files are closed, user can unmount partition
+	if (--FS::myImpl->openFilesCnt == 0) {
+		signal(FS::myImpl->canUnmount);
+	}
+
+	wait(FS::myImpl->fileMutex);
+
+	string whole(path.begin() + 1, path.end());
+
+	/*
+	if (mode == 'r') {
+		ReleaseSRWLockShared(FS::myImpl->srw[whole]);
+	} else {
+		ReleaseSRWLockExclusive(FS::myImpl->srw[whole]);
+	}
+	*/
+
+	signal(FS::myImpl->srw[whole]);
+	signal(FS::myImpl->fileMutex);
 }
 
 char KernelFile::write(BytesCnt howMany, char *buffer) {
@@ -43,7 +68,7 @@ char KernelFile::write(BytesCnt howMany, char *buffer) {
 	if ((int)firstLevelEntry >= (ClusterSize / sizeof(IndexEntry))) return 0;
 
 	for (int i = firstLevelEntry; i < ClusterSize / sizeof(IndexEntry); i++) {
-		IndexEntry *firstLevel = (IndexEntry *)cache->get(first)->getData();  // not before for loop because it can removed from cache!!!
+		IndexEntry *firstLevel = (IndexEntry *)cache->getCluster(first)->getData();  // not before for loop because it can removed from cache!!!
 		if (firstLevel[i] == 0) {
 			// Extend file with one second-level cluster
 
@@ -53,7 +78,7 @@ char KernelFile::write(BytesCnt howMany, char *buffer) {
 			}
 
 			disk->getBitVector()->occupy(free);
-			Cluster *cluster = cache->get(free);
+			Cluster *cluster = cache->getCluster(free);
 			cluster->clear();
 
 			firstLevel[i] = free;
@@ -62,7 +87,7 @@ char KernelFile::write(BytesCnt howMany, char *buffer) {
 		IndexEntry secondLevelEntry = (i == firstLevelEntry ? target % (ClusterSize / sizeof(IndexEntry)) : 0);
 
 		for (int j = secondLevelEntry; j < ClusterSize / sizeof(IndexEntry); j++) {
-			IndexEntry *secondLevel = (IndexEntry *)cache->get(firstLevel[i])->getData();
+			IndexEntry *secondLevel = (IndexEntry *)cache->getCluster(firstLevel[i])->getData();
 			if (secondLevel[j] == 0) {
 				// Extend file with data cluster
 
@@ -70,7 +95,7 @@ char KernelFile::write(BytesCnt howMany, char *buffer) {
 				if (free == 0) return 0;
 
 				disk->getBitVector()->occupy(free);
-				Cluster *cluster = cache->get(free);
+				Cluster *cluster = cache->getCluster(free);
 				cluster->clear();
 
 				secondLevel[j] = free;
@@ -78,7 +103,7 @@ char KernelFile::write(BytesCnt howMany, char *buffer) {
 
 			BytesCnt toWrite = min(howMany, ClusterSize - offset);
 
-			Cluster *dataCluster = cache->get(secondLevel[j]);
+			Cluster *dataCluster = cache->getCluster(secondLevel[j]);
 			char *data = dataCluster->getData();
 			memcpy(data + offset, buffer + buffRel, toWrite);
 
@@ -122,7 +147,7 @@ BytesCnt KernelFile::read(BytesCnt howMany, char *buffer) {
 	if ((int)firstLevelEntry >= ClusterSize / sizeof(IndexEntry)) return 0;
 
 	for (int i = firstLevelEntry; i < ClusterSize / sizeof(IndexEntry); i++) {
-		IndexEntry *firstLevel = (IndexEntry *)cache->get(first)->getData();
+		IndexEntry *firstLevel = (IndexEntry *)cache->getCluster(first)->getData();
 
 		if (firstLevel[i] == 0) {  // should not happen
 			done = true;
@@ -132,7 +157,7 @@ BytesCnt KernelFile::read(BytesCnt howMany, char *buffer) {
 		IndexEntry secondLevelEntry = (i == firstLevelEntry ? target % (ClusterSize / sizeof(IndexEntry)) : 0);
 
 		for (int j = secondLevelEntry; j < ClusterSize / sizeof(IndexEntry); j++) {
-			IndexEntry *secondLevel = (IndexEntry *)cache->get(firstLevel[i])->getData();
+			IndexEntry *secondLevel = (IndexEntry *)cache->getCluster(firstLevel[i])->getData();
 			if (secondLevel[j] == 0) {  // should not happen
 				done = true;
 				break;
@@ -140,7 +165,7 @@ BytesCnt KernelFile::read(BytesCnt howMany, char *buffer) {
 
 			BytesCnt toRead = min(min(howMany, ClusterSize - offset), fileSize - cursor);
 
-			Cluster *dataCluster = cache->get(secondLevel[j]);
+			Cluster *dataCluster = cache->getCluster(secondLevel[j]);
 			char *data = dataCluster->getData();
 			memcpy(buffer + buffRel, data + offset, toRead);
 
@@ -213,13 +238,13 @@ char KernelFile::truncate() {
 	IndexEntry firstLevelEntry = firstCluster / (ClusterSize / sizeof(IndexEntry));
 
 	for (int i = firstLevelEntry; i < ClusterSize / sizeof(IndexEntry); i++) {
-		IndexEntry *firstLevel = (IndexEntry *)cache->get(first)->getData();
+		IndexEntry *firstLevel = (IndexEntry *)cache->getCluster(first)->getData();
 		if (firstLevel[i] == 0) return 0;
 
 		IndexEntry secondLevelEntry = (i == firstLevelEntry ? firstCluster % (ClusterSize / sizeof(IndexEntry)) : 0);
 
 		for (int j = secondLevelEntry; j < ClusterSize / sizeof(IndexEntry); j++) {
-			IndexEntry *secondLevel = (IndexEntry *)cache->get(firstLevel[i])->getData();
+			IndexEntry *secondLevel = (IndexEntry *)cache->getCluster(firstLevel[i])->getData();
 			if (secondLevel[j] == 0) return 0;
 
 			disk->getBitVector()->makeFree(secondLevel[j]);

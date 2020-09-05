@@ -1,5 +1,4 @@
-#ifndef FILE_H
-#define FILE_H
+#pragma once
 
 typedef unsigned long BytesCnt;
 typedef unsigned long ClusterNo;
@@ -11,6 +10,9 @@ class Partition;
 
 class Disk;
 
+/*
+	Wrapper for KernelFile class.
+*/
 class File {
 public:
 	~File();
@@ -33,8 +35,6 @@ private:
 	friend class FS;
 	friend class KernelFS;
 
-	File(Disk *disk, LRUCache *c, ClusterNo firstLevel, ClusterNo dir, int entry, char mode, BytesCnt sz);  // instance of File can only be created with FS::open()
+	File(Disk *disk, Cache *c, ClusterNo firstLevel, ClusterNo dir, int entry, char mode, BytesCnt sz);  // instance of File can only be created with FS::open()
 	KernelFile *myImpl;
 };
-
-#endif

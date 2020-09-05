@@ -5,12 +5,15 @@ const int LRUCache::FACTOR = 10;
 LRUCache::LRUCache(Disk *d) : disk(d) {
 	ClusterNo n = disk->getPartition()->getNumOfClusters();
 	capacity = n / FACTOR;
+
+	mutex = CreateSemaphore(NULL, 1, 1, NULL);
 }
 
 LRUCache::~LRUCache() {
 	for (auto data : lruList) {
 		delete data.second;  // save cached cluster data to disk
 	}
+	CloseHandle(mutex);
 }
 
 void LRUCache::moveToFront(ClusterNo key, Cluster *value) {
@@ -20,24 +23,29 @@ void LRUCache::moveToFront(ClusterNo key, Cluster *value) {
 	hash[key] = lruList.begin();
 }
 
-Cluster* LRUCache::get(ClusterNo key) {
+Cluster* LRUCache::getCluster(ClusterNo key) {
 	if (key >= disk->getPartition()->getNumOfClusters()) {
 		return nullptr;
 	}
 
-	if (hash.find(key) == hash.end()) {  // if not in cache, get it from disk
+	wait(mutex);
+
+	if (hash.find(key) == hash.end()) {  // if not in cache, getCluster it from disk
 		Cluster *cluster = new Cluster(disk->getPartition(), key);
-		put(key, cluster);
+		putCluster(cluster);
+		signal(mutex);
 		return cluster;
 	}
 
 	// Move the (key, value) pair to front
 	Cluster *value = hash[key]->second;
 	moveToFront(key, value);
+	signal(mutex);
 	return value;
 }
 
-void LRUCache::put(ClusterNo key, Cluster *value) {
+void LRUCache::putCluster(Cluster *value) {
+	ClusterNo key = value->getClusterNo();
 	if (hash.find(key) != hash.end()) {  // when key is already in hash
 		moveToFront(key, value);
 	} else {  // add to the cache

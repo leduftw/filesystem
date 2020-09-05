@@ -1,12 +1,14 @@
-#ifndef CLUSTER_H
-#define CLUSTER_H
+#pragma once
 
 #include <cstring>
 
 #include "part.h"
 #include "FS.h"
 
-typedef ClusterNo IndexEntry;  // entries for first-level and second-level index have size of 32 bits
+/*
+	Entries for first-level and second-level index have size of 32 bits.
+*/
+typedef ClusterNo IndexEntry;
 
 /*
 	Entries in data cluster of root directory have size of 32 bytes.
@@ -87,5 +89,3 @@ public:
 	}
 
 };
-
-#endif

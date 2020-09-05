@@ -5,10 +5,12 @@ BitVector::BitVector(Partition *p, ClusterNo end) : partition(p), sz(end) {
 	for (ClusterNo cluster = 0; cluster < end; cluster++) {
 		clusters[cluster] = new Cluster(partition, cluster);
 	}
+
+	mutex = CreateSemaphore(NULL, 1, 1, NULL);
 }
 
 BitVector::~BitVector() {
-	// save(); because destructor of Cluster class saves data to disk
+	// save(); // no need for this, because destructor of Cluster class saves data to disk
 	for (ClusterNo cluster = 0; cluster < sz; cluster++) {
 		delete clusters[cluster];
 		clusters[cluster] = nullptr;
@@ -18,6 +20,8 @@ BitVector::~BitVector() {
 	clusters = nullptr;
 
 	sz = 0;
+
+	CloseHandle(mutex);
 }
 
 bool BitVector::getBit(ClusterNo clusterNo, unsigned long bitNo) const {
@@ -25,9 +29,13 @@ bool BitVector::getBit(ClusterNo clusterNo, unsigned long bitNo) const {
 		return false;
 	}
 
+	wait(mutex);
+
 	// Find index in cluster and position for bitNo on that index
 	int ind = bitNo >> 3, pos = bitNo % 8;
 	char *data = clusters[clusterNo]->getData();
+
+	signal(mutex);
 
 	return data[ind] & (1 << pos);  // bit on position pos
 
@@ -38,10 +46,14 @@ bool BitVector::setBit(ClusterNo clusterNo, unsigned long bitNo) {
 		return false;
 	}
 
+	wait(mutex);
+
 	int ind = bitNo >> 3, pos = bitNo % 8;
 	char *data = clusters[clusterNo]->getData();
 
 	data[ind] |= (1 << pos);  // sets the bit
+
+	signal(mutex);
 
 	return true;
 }
@@ -51,10 +63,14 @@ bool BitVector::resetBit(ClusterNo clusterNo, unsigned long bitNo) {
 		return false;
 	}
 
+	wait(mutex);
+
 	int ind = bitNo >> 3, pos = bitNo % 8;
 	char *data = clusters[clusterNo]->getData();
 
 	data[ind] &= ~(1 << pos);  // resets the bit
+
+	signal(mutex);
 
 	return true;
 }
@@ -67,7 +83,6 @@ ClusterNo BitVector::findFreeCluster() const {
 			return free;
 		}
 	}
-
 	return 0;
 }
 

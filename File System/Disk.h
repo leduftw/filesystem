@@ -1,8 +1,8 @@
-#ifndef DISK_H
-#define DISK_H
+#pragma once
 
 #include "part.h"
 #include "BitVector.h"
+#include "Cluster.h"
 
 class Disk {
 
@@ -12,11 +12,16 @@ class Disk {
 	BitVector *bitVector;
 	Cluster *firstLevelDirectory;
 
-
 public:
 
+	/*
+		Loads clusters that represent bit vector and first-level index of root directory to memory.
+	*/
 	Disk(Partition *);
 
+	/*
+		Saves bit vector data and first-level index of root directory data to disk.
+	*/
 	~Disk();
 
 	/*
@@ -56,11 +61,10 @@ public:
 	bool initializeRootDir();
 
 	/*
+		Do not use this!
 		Returns pointer to Cluster object with given ClusterNo.
-		Use LRUCache::get(ClusterNo) instead of this!
+		Use LRUCache::getCluster(ClusterNo) instead of this!
 	*/
 	Cluster* getCluster(ClusterNo) const;
 
 };
-
-#endif

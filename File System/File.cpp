@@ -1,7 +1,6 @@
 #include "File.h"
-#include "KernelFile.h"
 
-File::File(Disk *disk, LRUCache *c, ClusterNo firstLevel, ClusterNo dir, int entry, char mode, BytesCnt sz) {
+File::File(Disk *disk, Cache *c, ClusterNo firstLevel, ClusterNo dir, int entry, char mode, BytesCnt sz) {
 	myImpl = new KernelFile(disk, c, firstLevel, dir, entry, mode, sz);
 }
 

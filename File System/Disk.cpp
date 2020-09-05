@@ -1,9 +1,4 @@
-#include <string>
-#include <vector>
-
 #include "Disk.h"
-
-using namespace std;
 
 Disk::Disk(Partition *p) : partition(p) {
 	// Number of bits for bit vector is equal to number of clusters
@@ -20,7 +15,7 @@ Disk::Disk(Partition *p) : partition(p) {
 	bitVector = new BitVector(partition, clustersForBitVector);
 
 	// Bit vector occupies clusters 0, 1, ..., clustersForBitVector - 1,
-	// so first-level index of root directory has ordinal number == clustersForBitVector
+	// so first-level index cluster of root directory has ordinal number == clustersForBitVector
 	ClusterNo rootDirCluster = clustersForBitVector;
 
 	firstLevelDirectory = new Cluster(partition, rootDirCluster);
@@ -41,11 +36,6 @@ bool Disk::initializeBitVector() {
 	// Initially, all clusters are free except clusters for bit vector and one cluster for first-level index of root dir
 	// Free cluster has bit value 1, and occupied cluster has bit value 0
 
-	// Suppose there are 1000 clusters (0, 1, ..., 999), and bit vector occupies first 5 of them
-	// and first-level index of root directory occupies one. So, clusters 0, 1, 2, 3, 4 and 5,
-	// i.e. 6 of 1000 are occupied -> 1000 - 6 = 994 are free.
-
-	// ClusterNo freeClusters = partition->getNumOfClusters() - firstLevelDirectory->getClusterNo() - 1;  // number of free clusters
 	ClusterNo freeStart = firstLevelDirectory->getClusterNo() + 1;  // first free cluster
 
 	for (ClusterNo occupied = 0; occupied < freeStart; occupied++) {
