@@ -75,7 +75,7 @@ public:
 	}
 
 	/*
-		Resets all bits in bit vector (making all clusters free).
+		Resets all bits in bit vector (making all clusters occupied).
 	*/
 	bool clear() {
 		bool status = true;
