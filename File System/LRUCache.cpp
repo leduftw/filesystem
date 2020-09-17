@@ -30,7 +30,7 @@ Cluster* LRUCache::getCluster(ClusterNo key) {
 
 	wait(mutex);
 
-	if (hash.find(key) == hash.end()) {  // if not in cache, getCluster it from disk
+	if (hash.find(key) == hash.end()) {  // if not in cache, get cluster from disk
 		Cluster *cluster = new Cluster(disk->getPartition(), key);
 		putCluster(cluster);
 		signal(mutex);
